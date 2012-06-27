@@ -9,7 +9,7 @@ module Sidekiq
   ##
   # The main router in the system.  This
   # manages the processor state and accepts messages
-  # from Redis to be dispatched to an idle processor.
+  # from the backend to be dispatched to an idle processor.
   #
   class Manager
     include Util
@@ -18,7 +18,7 @@ module Sidekiq
     trap_exit :processor_died
 
     def initialize(options={})
-      logger.info "Booting sidekiq #{Sidekiq::VERSION} with Redis at #{redis {|x| x.client.id}}"
+      logger.info "Booting sidekiq #{Sidekiq::VERSION}"
       logger.info "Running in #{RUBY_DESCRIPTION}"
       logger.debug { options.inspect }
       @count = options[:concurrency] || 25
@@ -103,9 +103,7 @@ module Sidekiq
           # is blocked on redis and gets a message after
           # all the ready Processors have been stopped.
           # Push the message back to redis.
-          Sidekiq.redis do |conn|
-            conn.lpush("queue:#{queue}", msg)
-          end
+          Sidekiq.backend.push(payload, queue)
         else
           processor = @ready.pop
           @in_progress[processor.object_id] = [msg, queue]
@@ -124,16 +122,14 @@ module Sidekiq
           # They must die but their messages shall live on.
           logger.info("Still waiting for #{@busy.size} busy workers")
 
-          Sidekiq.redis do |conn|
-            @busy.each do |processor|
-              # processor is an actor proxy and we can't call any methods
-              # that would go to the actor (since it's busy).  Instead
-              # we'll use the object_id to track the worker's data here.
-              msg, queue = @in_progress[processor.object_id]
-              conn.lpush("queue:#{queue}", msg)
-            end
+          @busy.each do |processor|
+            # processor is an actor proxy and we can't call any methods
+            # that would go to the actor (since it's busy).  Instead
+            # we'll use the object_id to track the worker's data here.
+            msg, queue = @in_progress[processor.object_id]
+            Sidekiq.backend.push(msg, "queue:#{queue}")
           end
-          logger.info("Pushed #{@busy.size} messages back to Redis")
+          logger.info("Pushed #{@busy.size} messages back to the backend")
 
           after(0) { signal(:shutdown) }
         end

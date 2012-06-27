@@ -4,6 +4,8 @@ require 'sidekiq/client'
 require 'sidekiq/worker'
 require 'sidekiq/redis_connection'
 require 'sidekiq/util'
+require 'sidekiq/backend/queue/base'
+require 'sidekiq/backend/queue/redis'
 
 require 'sidekiq/extensions/action_mailer'
 require 'sidekiq/extensions/active_record'
@@ -55,6 +57,10 @@ module Sidekiq
 
   def self.server?
     defined?(Sidekiq::CLI)
+  end
+
+  def self.backend
+    @backend ||= Sidekiq::Backend::Queue::Redis.new
   end
 
   def self.redis(&block)

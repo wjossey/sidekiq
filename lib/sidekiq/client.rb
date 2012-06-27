@@ -9,14 +9,6 @@ module Sidekiq
       end
     end
 
-    def self.registered_workers
-      Sidekiq.redis { |x| x.smembers('workers') }
-    end
-
-    def self.registered_queues
-      Sidekiq.redis { |x| x.smembers('queues') }
-    end
-
     ##
     # The main method used to push a job to Redis.  Accepts a number of options:
     #
@@ -47,15 +39,10 @@ module Sidekiq
       pushed = false
       Sidekiq.client_middleware.invoke(worker_class, item, queue) do
         payload = Sidekiq.dump_json(item)
-        Sidekiq.redis do |conn|
-          if item['at']
-            pushed = (conn.zadd('schedule', item['at'].to_s, payload) == 1)
-          else
-            _, pushed = conn.multi do
-              conn.sadd('queues', queue)
-              conn.rpush("queue:#{queue}", payload)
-            end
-          end
+        if item['at']
+          pushed = Sidekiq.backend.schedule(payload, queue, item['at'])
+        else
+          pushed = Sidekiq.backend.push(payload, queue)
         end
       end
       !! pushed
