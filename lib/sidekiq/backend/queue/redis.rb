@@ -5,11 +5,6 @@ module Sidekiq
 
         TIMEOUT = 1
 
-        def create(options={})
-          @queues = options[:queues] || registered_queues.map { |q| "queue:#{q}"}
-          @unique_queues = @queues.uniq
-        end
-
         def push(payload, queue="default")          
           _, pushed = Sidekiq.redis do |conn|
             conn.multi do 
@@ -20,7 +15,10 @@ module Sidekiq
           pushed
         end
 
-        def pop(queue="default")
+        #Pop the next item off the list of given queues. Returns the queue
+        #that it was found on & the message
+        def pop(queues)
+          @queues = queues
           msg = nil
           Sidekiq.redis { |conn| queue, msg = conn.blpop(*queues_cmd) }
         end
@@ -39,9 +37,13 @@ module Sidekiq
           # recreate the queue command each time we invoke Redis#blpop
           # to honor weights and avoid queue starvation.
           def queues_cmd
-            queues = @queues.sample(@unique_queues.size).uniq
-            queues.concat(@unique_queues - queues)
-            queues << TIMEOUT
+            queues_sample = queues.sample(unique_queues.size).uniq
+            queues_sample.concat(unique_queues - queues_sample)
+            queues_sample << TIMEOUT
+          end
+
+          def unique_queues
+            @unique_queues ||= queues.uniq
           end
       end
     end

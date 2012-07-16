@@ -14,8 +14,7 @@ module Sidekiq
 
     def initialize(mgr, queues)
       @mgr = mgr
-      @queues = queues.map { |q| "queue:#{q}" }
-      @unique_queues = @queues.uniq
+      @queues = queues
     end
 
     # Fetching is straightforward: the Manager makes a fetch
@@ -33,7 +32,7 @@ module Sidekiq
         begin
           queue = nil
           msg = nil
-          Sidekiq.redis { |conn| queue, msg = conn.blpop(*queues_cmd) }
+          queue, msg = Sidekiq.backend.pop(Sidekiq.backend.registered_queues)
 
           if msg
             @mgr.assign!(msg, queue.gsub(/.*queue:/, ''))
@@ -58,19 +57,6 @@ module Sidekiq
 
     def self.done?
       @done
-    end
-
-    private
-
-    # Creating the Redis#blpop command takes into account any
-    # configured queue weights. By default Redis#blpop returns
-    # data from the first queue that has pending elements. We
-    # recreate the queue command each time we invoke Redis#blpop
-    # to honor weights and avoid queue starvation.
-    def queues_cmd
-      queues = @queues.sample(@unique_queues.size).uniq
-      queues.concat(@unique_queues - queues)
-      queues << TIMEOUT
-    end
+    end    
   end
 end

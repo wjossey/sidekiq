@@ -6,6 +6,7 @@ require 'sidekiq/redis_connection'
 require 'sidekiq/util'
 require 'sidekiq/backend/queue/base'
 require 'sidekiq/backend/queue/redis'
+require 'sidekiq/backend/queue/sqs'
 
 require 'sidekiq/extensions/action_mailer'
 require 'sidekiq/extensions/active_record'
@@ -59,8 +60,14 @@ module Sidekiq
     defined?(Sidekiq::CLI)
   end
 
-  def self.backend
-    @backend ||= Sidekiq::Backend::Queue::Redis.new
+  def self.backend(options={})
+    #Defaults to a redis based backend
+    @backend ||= Sidekiq::Backend::Queue::Redis.new(options)
+  end
+
+  #Set the backend 
+  def self.backend=(backend)
+    @backend = backend
   end
 
   def self.redis(&block)
@@ -76,6 +83,22 @@ module Sidekiq
       @redis = hash
     else
       raise ArgumentError, "redis= requires a Hash or ConnectionPool"
+    end
+  end
+
+  def self.sqs(&block)
+    @sqs ||= Sidekiq::SQSConnection.create
+    raise ArgumentError, "requires a block" if !block
+    block.call(@sqs)
+  end
+
+  def self.sqs=(hash)
+    if hash.is_a?(Hash)
+      @sqs = Sidekiq::SQSConnection.create(hash)
+    elsif hash.is_a?(ConnectionPool)
+      @sqs = hash
+    else
+      raise ArgumentError, "sqs= requires a Hash or ConnectionPool"
     end
   end
 

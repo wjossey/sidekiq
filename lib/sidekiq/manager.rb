@@ -28,6 +28,7 @@ module Sidekiq
       @done = false
       @busy = []
       @fetcher = Fetcher.new(current_actor, options[:queues])
+      @backend = Sidekiq.backend(options)
       @ready = @count.times.map { Processor.new_link(current_actor) }
       procline
     end
@@ -103,7 +104,7 @@ module Sidekiq
           # is blocked on redis and gets a message after
           # all the ready Processors have been stopped.
           # Push the message back to redis.
-          Sidekiq.backend.push(payload, queue)
+          Sidekiq.backend.push(msg, queue)
         else
           processor = @ready.pop
           @in_progress[processor.object_id] = [msg, queue]
